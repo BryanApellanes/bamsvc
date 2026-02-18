@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="$(BamFrameworkRoot)bam.server\bam.server\bam.server.csproj" />
     <ProjectReference Include="$(BamFrameworkRoot)bam.protocol\bam.protocol\bam.protocol.csproj" />
     <ProjectReference Include="$(BamFrameworkRoot)bam.base\bam.base\bam.base.csproj" />
     <ProjectReference Include="$(BamFrameworkRoot)bam.configuration\bam.configuration\bam.configuration.csproj" />
