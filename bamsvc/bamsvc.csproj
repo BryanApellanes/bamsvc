@@ -7,13 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\bam.protocol\bam.protocol\bam.protocol.csproj" />
-    <ProjectReference Include="..\..\bam.base\bam.base\bam.base.csproj" />
-    <ProjectReference Include="..\..\bam.configuration\bam.configuration\bam.configuration.csproj" />
-    <ProjectReference Include="..\..\bam.data.objects\bam.data.objects\bam.data.objects.csproj" />
-    <ProjectReference Include="..\..\bam.data\bam.data\bam.data.csproj" />
-    <ProjectReference Include="..\..\bam.encryption\bam.encryption\bam.encryption.csproj" />
-    <ProjectReference Include="..\..\bam.storage\bam.storage.encryption\bam.storage.encryption.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.protocol\bam.protocol\bam.protocol.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.base\bam.base\bam.base.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.configuration\bam.configuration\bam.configuration.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.data.objects\bam.data.objects\bam.data.objects.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.data\bam.data\bam.data.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.encryption\bam.encryption\bam.encryption.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.storage\bam.storage.encryption\bam.storage.encryption.csproj" />
   </ItemGroup>
 
 </Project>
