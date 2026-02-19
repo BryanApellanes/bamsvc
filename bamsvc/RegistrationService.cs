@@ -3,10 +3,12 @@ using Bam.Protocol.Data;
 using Bam.Protocol.Data.Server;
 using Bam.Protocol.Profile;
 using Bam.Protocol.Profile.Registration;
+using Bam.Server;
 
 namespace Bam.Svc;
 
 [RequiredAccess(BamAccess.Execute)]
+[RoutePrefix("/api/registration")]
 public class RegistrationService
 {
     private readonly IAccountManager _accountManager;
@@ -19,6 +21,7 @@ public class RegistrationService
     }
 
     [AnonymousAccess(encryptionRequired: true)]
+    [RoutePath("/register", "POST")]
     public AccountData RegisterPerson(string firstName, string lastName, string? email, string? phone, string? handle)
     {
         var registrationData = new PersonRegistrationData
@@ -34,6 +37,7 @@ public class RegistrationService
     }
 
     [AnonymousAccess]
+    [RoutePath("/profile/{handle}", "GET")]
     public object? GetProfile(string handle)
     {
         var profile = _profileManager.FindProfileByHandle(handle);
