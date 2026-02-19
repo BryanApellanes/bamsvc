@@ -1,6 +1,4 @@
-using System.Text.Json;
 using Bam.Data.SQLite;
-using Bam.DependencyInjection;
 using Bam.Net;
 using Bam.Presentation;
 using Bam.Protocol;
@@ -26,12 +24,13 @@ if (portArg != null && int.TryParse(portArg["--port=".Length..], out var parsedP
     httpPort = parsedPort;
 }
 
-// Bootstrap registration dependencies
-var registry = new ServiceRegistry();
-registry.AddEncryptedProfileRepository("./.bam/profile");
-registry.For<IProfileManager>().Use<ProfileManager>();
+// Create BamServerOptions directly so we can register custom services
+var options = new BamServerOptions();
+options.ServerName = serverName;
+options.HttpHostBinding = new HostBinding(httpPort);
 
-var profileManager = registry.Get<IProfileManager>();
+// Bootstrap registration dependencies using the options ComponentRegistry
+var profileManager = options.ComponentRegistry.Get<IProfileManager>();
 var sessionRepo = new ServerSessionSchemaRepository
 {
     Database = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"))
@@ -40,8 +39,13 @@ sessionRepo.Initialize();
 var accountManager = new AccountManager(profileManager, sessionRepo, serverName);
 var registrationService = new RegistrationService(accountManager, profileManager);
 
+// Register RegistrationService so the BAM pipeline can resolve it
+options.ComponentRegistry.For<RegistrationService>().UseSingleton(registrationService);
+
 // Create WebApplicationBamServer with ConfigureRoutes
-var webServer = await BamPlatform.CreateWebApplicationServerAsync(serverName, httpPort);
+var webServer = new WebApplicationBamServer(options);
+BamPlatform.Servers.Add(webServer);
+
 webServer.Starting += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer starting on port {httpPort}...");
 webServer.Started += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer started: http://localhost:{httpPort}");
 webServer.RequestExceptionThrown += (_, _) => Console.Error.WriteLine($"[bamsvc] Request error: {webServer.LastExceptionMessage}");
@@ -81,74 +85,6 @@ webServer.ConfigureRoutes = app =>
         }
 
         return Results.Json(result);
-    });
-
-    // MethodInvocationRequest endpoint for registration
-    app.MapPost("/bam/invoke/register", async (HttpContext ctx) =>
-    {
-        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        MethodInvocationRequest? invocationRequest;
-        try
-        {
-            invocationRequest = await ctx.Request.ReadFromJsonAsync<MethodInvocationRequest>(jsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return Results.Json(new { error = $"Invalid request body: {ex.Message}" }, statusCode: 400);
-        }
-
-        if (invocationRequest == null || string.IsNullOrEmpty(invocationRequest.OperationIdentifier))
-        {
-            return Results.Json(new { error = "operationIdentifier is required" }, statusCode: 400);
-        }
-
-        var parts = invocationRequest.OperationIdentifier.Split('+', ',');
-        if (parts.Length < 2)
-        {
-            return Results.Json(new { error = "Invalid operationIdentifier format" }, statusCode: 400);
-        }
-
-        var typeName = parts[0].Trim();
-        var methodName = parts[1].Trim();
-
-        if (typeName != typeof(RegistrationService).FullName)
-        {
-            return Results.Json(new { error = "Only RegistrationService methods may be invoked" }, statusCode: 403);
-        }
-
-        string? ArgValue(string name)
-        {
-            var arg = invocationRequest.Arguments?.FirstOrDefault(a =>
-                string.Equals(a.ParameterName, name, StringComparison.OrdinalIgnoreCase));
-            if (arg == null) return null;
-            return arg.Value is JsonElement je ? je.GetString() : arg.Value?.ToString();
-        }
-
-        try
-        {
-            object? result = methodName switch
-            {
-                nameof(RegistrationService.RegisterPerson) => registrationService.RegisterPerson(
-                    ArgValue("firstName") ?? throw new ArgumentException("firstName is required"),
-                    ArgValue("lastName") ?? throw new ArgumentException("lastName is required"),
-                    ArgValue("email"),
-                    ArgValue("phone"),
-                    ArgValue("handle")),
-                nameof(RegistrationService.GetProfile) => registrationService.GetProfile(
-                    ArgValue("handle") ?? throw new ArgumentException("handle is required")),
-                _ => throw new InvalidOperationException($"Unknown method: {methodName}")
-            };
-
-            return Results.Json(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return Results.Json(new { error = ex.Message }, statusCode: 400);
-        }
-        catch (Exception ex)
-        {
-            return Results.Json(new { error = ex.Message }, statusCode: 500);
-        }
     });
 };
 

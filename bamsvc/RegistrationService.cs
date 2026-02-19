@@ -6,6 +6,7 @@ using Bam.Protocol.Profile.Registration;
 
 namespace Bam.Svc;
 
+[RequiredAccess(BamAccess.Execute)]
 public class RegistrationService
 {
     private readonly AccountManager _accountManager;
@@ -17,6 +18,7 @@ public class RegistrationService
         _profileManager = profileManager;
     }
 
+    [AnonymousAccess(encryptionRequired: true)]
     public AccountData RegisterPerson(string firstName, string lastName, string? email, string? phone, string? handle)
     {
         var registrationData = new PersonRegistrationData
@@ -31,6 +33,7 @@ public class RegistrationService
         return _accountManager.RegisterAccount(registrationData);
     }
 
+    [AnonymousAccess]
     public object? GetProfile(string handle)
     {
         var profile = _profileManager.FindProfileByHandle(handle);
