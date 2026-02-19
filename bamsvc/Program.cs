@@ -1,11 +1,6 @@
 using Bam.Data.SQLite;
 using Bam.Net;
 using Bam.Presentation;
-using Bam.Protocol;
-using Bam.Protocol.Data;
-using Bam.Protocol.Data.Server.Dao.Repository;
-using Bam.Protocol.Profile;
-using Bam.Protocol.Profile.Registration;
 using Bam.Protocol.Server;
 using Bam.Server;
 using Bam.Svc;
@@ -17,32 +12,20 @@ var serverName = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "bamsvc";
 var httpPort = 8080;
 var enableTcpUdp = args.Contains("--tcp-udp");
 
-// Parse optional port
 var portArg = args.FirstOrDefault(a => a.StartsWith("--port="));
 if (portArg != null && int.TryParse(portArg["--port=".Length..], out var parsedPort))
 {
     httpPort = parsedPort;
 }
 
-// Create BamServerOptions directly so we can register custom services
 var options = new BamServerOptions();
 options.ServerName = serverName;
 options.HttpHostBinding = new HostBinding(httpPort);
+options.SessionDatabase = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"));
 
-// Bootstrap registration dependencies using the options ComponentRegistry
-var profileManager = options.ComponentRegistry.Get<IProfileManager>();
-var sessionRepo = new ServerSessionSchemaRepository
-{
-    Database = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"))
-};
-sessionRepo.Initialize();
-var accountManager = new AccountManager(profileManager, sessionRepo, serverName);
-var registrationService = new RegistrationService(accountManager, profileManager);
+// Application service — resolved by DI via IAccountManager + IProfileManager
+options.ComponentRegistry.For<RegistrationService>().Use<RegistrationService>();
 
-// Register RegistrationService so the BAM pipeline can resolve it
-options.ComponentRegistry.For<RegistrationService>().UseSingleton(registrationService);
-
-// Create WebApplicationBamServer with ConfigureRoutes
 var webServer = new WebApplicationBamServer(options);
 BamPlatform.Servers.Add(webServer);
 
@@ -50,12 +33,13 @@ webServer.Starting += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamSe
 webServer.Started += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer started: http://localhost:{httpPort}");
 webServer.RequestExceptionThrown += (_, _) => Console.Error.WriteLine($"[bamsvc] Request error: {webServer.LastExceptionMessage}");
 
+// Resolve RegistrationService for REST endpoints (same instance the pipeline uses)
+var registrationService = options.ComponentRegistry.Get<RegistrationService>();
+
 webServer.ConfigureRoutes = app =>
 {
-    // HTML pages
     app.MapPages(new IndexPage(), new RegisterPage(), new RegisterResultPage());
 
-    // REST registration API
     app.MapPost("/api/register", async (HttpContext ctx) =>
     {
         var request = await ctx.Request.ReadFromJsonAsync<PersonRegistrationRequest>();
@@ -90,21 +74,16 @@ webServer.ConfigureRoutes = app =>
 
 await webServer.StartAsync();
 
-// Optionally start BamServer for TCP/UDP
 BamServer? bamServer = null;
 if (enableTcpUdp)
 {
-    bamServer = new BamServerBuilder()
-        .ServerName(serverName)
-        .UseNameBasedPort()
-        .OnStarted((_, _) => Console.WriteLine($"[bamsvc] BamServer started: TCP={bamServer!.TcpPort}, UDP={bamServer.UdpPort}"))
-        .Build();
+    options.EnableHttpListener = false;
+    bamServer = new BamServer(options);
     await bamServer.StartAsync();
 }
 
 Console.WriteLine("[bamsvc] Press Ctrl+C to stop.");
 
-// Wait for shutdown signal
 var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {

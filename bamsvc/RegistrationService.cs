@@ -9,10 +9,10 @@ namespace Bam.Svc;
 [RequiredAccess(BamAccess.Execute)]
 public class RegistrationService
 {
-    private readonly AccountManager _accountManager;
+    private readonly IAccountManager _accountManager;
     private readonly IProfileManager _profileManager;
 
-    public RegistrationService(AccountManager accountManager, IProfileManager profileManager)
+    public RegistrationService(IAccountManager accountManager, IProfileManager profileManager)
     {
         _accountManager = accountManager;
         _profileManager = profileManager;
