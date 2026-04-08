@@ -1,10 +1,12 @@
 using Bam.Data.SQLite;
+using Bam.Messaging;
 using Bam.Net;
 using Bam.Presentation;
 using Bam.Protocol.Server;
 using Bam.Server;
 using Bam.Svc;
 using Bam.Svc.Pages;
+using Bam.UserAccounts;
 using Microsoft.AspNetCore.Builder;
 
 var serverName = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "bamsvc";
@@ -22,7 +24,14 @@ options.ServerName = serverName;
 options.HttpHostBinding = new HostBinding(httpPort);
 options.SessionDatabase = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"));
 
-// Application service — resolved by DI via IAccountManager + IProfileManager
+// User account lifecycle services
+options.ComponentRegistry.For<IRegistrationValidator>().Use<DefaultRegistrationValidator>();
+options.ComponentRegistry.For<IRegistrationNotifier>().Use<EmailRegistrationNotifier>();
+options.ComponentRegistry.For<IAccountConfirmation>().Use<DeviceKeyAccountConfirmation>();
+options.ComponentRegistry.For<IRoleGroupMapper>().Use<RoleGroupMapper>();
+options.ComponentRegistry.For<IUserAccountService>().Use<UserAccountService>();
+
+// Application service — delegates to IUserAccountService
 options.ComponentRegistry.For<RegistrationService>().Use<RegistrationService>();
 
 var webServer = new WebApplicationBamServer(options);

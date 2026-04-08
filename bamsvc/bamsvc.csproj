@@ -16,6 +16,7 @@
     <ProjectReference Include="$(BamFrameworkRoot)bam.encryption\bam.encryption\bam.encryption.csproj" />
     <ProjectReference Include="$(BamFrameworkRoot)bam.storage\bam.storage.encryption\bam.storage.encryption.csproj" />
     <ProjectReference Include="$(BamFrameworkRoot)bam.presentation\bam.presentation\bam.presentation.csproj" />
+    <ProjectReference Include="$(BamFrameworkRoot)bam.useraccounts\bam.useraccounts\bam.useraccounts.csproj" />
   </ItemGroup>
 
 </Project>
