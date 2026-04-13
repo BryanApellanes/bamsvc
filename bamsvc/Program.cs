@@ -1,6 +1,5 @@
 using Bam.Data.SQLite;
 using Bam.Messaging;
-using Bam.Net;
 using Bam.Presentation;
 using Bam.Protocol.Server;
 using Bam.Server;
