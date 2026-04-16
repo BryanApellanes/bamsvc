@@ -79,17 +79,17 @@ Any request not matched by the above routes is handled by `WebApplicationBamServ
 ```json
 {
   "operationIdentifier": "Bam.Svc.RegistrationService+RegisterPerson",
-  "arguments": [
-    { "parameterName": "firstName", "value": "Jane" },
-    { "parameterName": "lastName", "value": "Doe" },
-    { "parameterName": "email", "value": "jane@example.com" },
-    { "parameterName": "phone", "value": "555-1234" },
-    { "parameterName": "handle", "value": "janedoe" }
-  ]
+  "arguments": {
+    "firstName": "Jane",
+    "lastName": "Doe",
+    "email": "jane@example.com",
+    "phone": "555-1234",
+    "handle": "janedoe"
+  }
 }
 ```
 
-The `operationIdentifier` format is `TypeName+MethodName` (or `TypeName,MethodName`). The type name must be the fully qualified .NET type name. Arguments are matched to method parameters by name (case-insensitive).
+The `operationIdentifier` format is `TypeName+MethodName` (or `TypeName,MethodName`). The type name must be the fully qualified .NET type name. Arguments are key-value pairs matched to method parameters by name (case-insensitive).
 
 ## Available Operations
 
@@ -178,7 +178,7 @@ Request received
 1. The request body must be valid JSON conforming to `MethodInvocationRequest`.
 2. The `operationIdentifier` must resolve to a type registered in the `ComponentRegistry` and a public method on that type.
 3. The method must have `[AnonymousAccess]` (with `encryptionRequired: false`, which is the default).
-4. All required method parameters must be present in the `arguments` array with correct `parameterName` values.
+4. All required method parameters must be present in the `arguments` object with correct key names.
 
 ### For encrypted anonymous requests (e.g. `RegisterPerson`)
 

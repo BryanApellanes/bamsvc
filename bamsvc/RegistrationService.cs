@@ -5,6 +5,7 @@ using Bam.UserAccounts;
 
 namespace Bam.Svc;
 
+[WebService]
 [RequiredAccess(BamAccess.Execute)]
 [RoutePrefix("/api/registration")]
 public class RegistrationService
