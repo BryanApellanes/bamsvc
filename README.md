@@ -10,6 +10,8 @@ The project references a broad set of BAM framework libraries -- bam.protocol, b
 
 The service is positioned as the server-side counterpart to the BAM protocol client libraries, providing endpoints that BAM clients can connect to for data operations, configuration management, and encrypted communication.
 
+**Intended role:** `bamsvc` is the internal backend application communication service layer — it hosts BAM protocol endpoints for use *between* Bam-based applications/services, not for public consumption. The public-facing counterpart, exposing Bam services over plain HTTP for external API clients, is intended to be `bamapi` (currently an unimplemented scaffold — see its README).
+
 ## Key Classes
 
 | Class | Description |
