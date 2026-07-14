@@ -1,63 +1,56 @@
 # bamsvc
 
-A minimal ASP.NET Core web service providing a BAM protocol endpoint with data storage, encryption, and configuration support.
+An ASP.NET Core host for the Bam protocol, currently implementing person registration and profile lookup over both HTML pages and a REST API.
 
 ## Overview
 
-bamsvc is an ASP.NET Core web application (using the Web SDK) that serves as a lightweight service host for the BAM protocol stack. It bootstraps a `WebApplication` using the standard ASP.NET Core builder pattern with a single `GET /` endpoint returning "Hello World!" and an additional catch-all `app.Run` handler for custom request processing.
+bamsvc builds a `WebApplicationBamServer` (from `bam.server`) with a `RegistrationService` wired into its `ComponentRegistry`, backed by an `AccountManager` and `IProfileManager` and a SQLite-based `ServerSessionSchemaRepository` for session data. It serves three HTML pages (`IndexPage`, `RegisterPage`, `RegisterResultPage`, via `bam.presentation`'s `MapPages`) and two REST endpoints: `POST /api/register` (creates a person account) and `GET /api/profile/{handle}` (looks up a profile by handle). It can optionally also start a TCP/UDP `BamServer` alongside the HTTP host when run with `--tcp-udp`.
 
-The project references a broad set of BAM framework libraries -- bam.protocol, bam.base, bam.configuration, bam.data.objects, bam.data, bam.encryption, and bam.storage.encryption -- indicating it is designed to serve as a backend service capable of handling BAM protocol requests, managing structured data objects, and providing encrypted storage. However, the current `Program.cs` contains only scaffolding code with an empty `app.Run` handler body.
-
-The service is positioned as the server-side counterpart to the BAM protocol client libraries, providing endpoints that BAM clients can connect to for data operations, configuration management, and encrypted communication.
+**Intended role:** `bamsvc` is the internal backend application communication service layer — it hosts BAM protocol endpoints for use *between* Bam-based applications/services, not for public consumption. The public-facing counterpart, exposing Bam services over plain HTTP for external API clients, is intended to be `bamapi` (currently an unimplemented scaffold — see its README).
 
 ## Key Classes
 
 | Class | Description |
 |---|---|
-| `Program` (top-level statements) | Application entry point: configures and runs the ASP.NET Core web host |
+| `Program` (top-level statements) | Builds a `WebApplicationBamServer`, wires up `RegistrationService`/`AccountManager`, maps HTML pages and the REST registration API, and optionally starts a TCP/UDP `BamServer`. |
+| `RegistrationService` | `[RequiredAccess(BamAccess.Execute)]` service exposing `RegisterPerson` (`[AnonymousAccess(encryptionRequired: true)]`) and `GetProfile` (`[AnonymousAccess]`). |
+| `IndexPage` / `RegisterPage` / `RegisterResultPage` | HTML pages served via `bam.presentation`'s `MapPages`. |
+| `PersonRegistrationRequest` | Request body for `POST /api/register`. |
 
 ## Dependencies
 
-**Project References:**
-- `bam.protocol` -- BAM protocol definitions and message handling
-- `bam.base` -- Core BAM framework library
-- `bam.configuration` -- Configuration management
-- `bam.data.objects` -- Data object model and repositories
-- `bam.data` -- Data access layer
-- `bam.encryption` -- Encryption primitives
-- `bam.storage.encryption` -- Encrypted storage providers
+**Project References:** `bam.server`, `bam.protocol`, `bam.base`, `bam.configuration`, `bam.data.objects`, `bam.data`, `bam.encryption`, `bam.storage.encryption`, `bam.presentation`.
 
-**Target Framework:** net10.0
-**SDK:** Microsoft.NET.Sdk.Web
+**Target Framework:** net10.0, `Microsoft.NET.Sdk.Web`.
 
 ## Usage Examples
 
 ```bash
-# Run the service
-dotnet run --project bamsvc
+# Run the service (defaults to HTTP port 8080)
+dotnet run --project bamsvc/bamsvc.csproj
 
-# The service starts and listens for HTTP requests
-# GET / returns "Hello World!"
+# Override the port, and/or also start the TCP/UDP BamServer
+dotnet run --project bamsvc/bamsvc.csproj -- --port=8081 --tcp-udp
 ```
 
-```csharp
-// Current Program.cs structure:
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
+```bash
+# Register a person
+curl -X POST http://localhost:8080/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Jane","lastName":"Doe","email":"jane@example.com"}'
 
-app.MapGet("/", () => "Hello World!");
+# Look up a profile
+curl http://localhost:8080/api/profile/{handle}
+```
 
-app.Run(async context =>
-{
-    // Request handling to be implemented
-});
+## Running Tests
+
+```bash
+dotnet run --project bamsvc.tests/bamsvc.tests.csproj -- --ut
 ```
 
 ## Known Gaps / Not Yet Implemented
 
-- **The `app.Run` handler body is empty** -- no BAM protocol request processing is implemented.
-- No middleware, authentication, or authorization is configured.
-- No service registrations are made in the DI container despite having many project references.
-- None of the referenced libraries (bam.protocol, bam.data.objects, bam.encryption, etc.) are actually used in the code.
-- No configuration files (appsettings.json, etc.) are included.
-- No API controllers, endpoints, or request handlers beyond the "Hello World!" route.
+- **The REST endpoints bypass the BAM pipeline's security enforcement.** `RegistrationService.RegisterPerson` is decorated `[AnonymousAccess(encryptionRequired: true)]` and `GetProfile` with `[AnonymousAccess]`, but `Program.cs` calls both directly from raw `app.MapPost`/`app.MapGet` handlers instead of routing through the pipeline. This is exactly the problem `bam.server`'s [route-to-pipeline bridge](https://github.com/BryanApellanes/bam.server/blob/bam_server/docs/route-to-pipeline-bridge.md) design doc calls out: security attributes on a directly-called service method are silently ignored — no encryption is actually enforced on `/api/register` today despite `encryptionRequired: true`, and no authorization/session-management stage runs.
+- That design doc explicitly references a companion `bamsvc/docs/route-to-pipeline-bridge.md` "for the consumer-side changes" — no such file (or any `docs/` directory) currently exists in this repository, so the bridge has not yet been adopted here.
+- `GetProfile` returns `object?` rather than a concrete type.
