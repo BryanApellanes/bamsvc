@@ -1,7 +1,5 @@
 using Bam.Identity;
 using Bam.Protocol.Data.Server;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 
 namespace Bam.Svc;
 
@@ -18,8 +16,10 @@ public class GatewayOutcome
 }
 
 /// <summary>
-/// Maps bamsvc's existing public REST convenience routes (<c>/api/register</c>, <c>/api/profile/{handle}</c>)
-/// onto <see cref="IRegistrationService"/> calls against <c>bamid</c> instead of in-process identity logic.
+/// Computes gateway outcomes for bamsvc's public identity routes (<c>/api/register</c>,
+/// <c>/api/profile/{handle}</c>) by delegating to <see cref="IRegistrationService"/> calls against
+/// <c>bamid</c> instead of in-process identity logic. Exposed over HTTP by <see cref="IdentityGateway"/>,
+/// which routes requests through the BamPipeline via the route-to-pipeline bridge.
 /// </summary>
 public class IdentityGatewayRoutes
 {
@@ -28,22 +28,6 @@ public class IdentityGatewayRoutes
     public IdentityGatewayRoutes(IRegistrationService registrationService)
     {
         _registrationService = registrationService;
-    }
-
-    public void MapRoutes(WebApplication app)
-    {
-        app.MapPost("/api/register", async (HttpContext ctx) =>
-        {
-            PersonRegistrationRequest? request = await ctx.Request.ReadFromJsonAsync<PersonRegistrationRequest>();
-            GatewayOutcome outcome = BuildRegisterOutcome(request);
-            return Results.Json(outcome.Body, statusCode: outcome.StatusCode);
-        });
-
-        app.MapGet("/api/profile/{handle}", (string handle) =>
-        {
-            GatewayOutcome outcome = BuildProfileOutcome(handle);
-            return Results.Json(outcome.Body, statusCode: outcome.StatusCode);
-        });
     }
 
     public GatewayOutcome BuildRegisterOutcome(PersonRegistrationRequest? request)
