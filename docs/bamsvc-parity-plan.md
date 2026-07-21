@@ -1,5 +1,13 @@
 # bamsvc Parity — Multi-Protocol Support & WebService Registry
 
+> **Status (2026-07-21):** Part 1 (bam.server: `WebServiceAttribute`, `ClassNotAWebServiceException`,
+> `WebServiceRegistry`, plus `RoutePrefixAttribute`/`RoutePathAttribute`/`RouteHandlerRegistrar`) is
+> **delivered** — present at bam.server `c984cb1`, the pointer bamtk records. Parts 2–3 (bamsvc adoption)
+> landed with the branch-reconciliation merge for bamsvc#4, adapted to the post-bamid architecture:
+> `RegistrationService` no longer exists in bamsvc (identity is gatewayed to bamid via `IdentityGateway`),
+> so the `[WebService]` surfaces are `ActorRegistrationService` and `IdentityGateway`. Part 4 (svcgateway.io
+> propagation) follows the next bamtk submodule-pointer advance.
+
 ## Overview
 
 Update bamsvc to support configurable multi-protocol exposure (HTTP, HTTPS, TCP, UDP) and introduce a `WebServiceRegistry` that enforces the `[WebService]` attribute on classes resolved for remote execution.
