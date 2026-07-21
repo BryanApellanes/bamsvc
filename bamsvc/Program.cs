@@ -1,4 +1,5 @@
 using Bam.Data.Objects;
+using Bam.Data.SQLite;
 using Bam.Identity;
 using Bam.Identity.Clients;
 using Bam.Protocol;
@@ -6,66 +7,105 @@ using Bam.Protocol.Client;
 using Bam.Protocol.Server;
 using Bam.Server;
 using Bam.Svc;
-using Microsoft.AspNetCore.Builder;
+using Bam.UserAccounts;
 
-string serverName = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "bamsvc";
-int httpPort = 8080;
-bool enableTcpUdp = args.Contains("--tcp-udp");
+BamsvcConfiguration config = BamsvcConfiguration.FromArgs(args);
 
-// Parse optional port
-string? portArg = args.FirstOrDefault(a => a.StartsWith("--port="));
-if (portArg != null && int.TryParse(portArg["--port=".Length..], out int parsedPort))
-{
-    httpPort = parsedPort;
-}
+// bamid-backed identity: registration/profile calls go to bamid over TCP rather than
+// hosting identity logic in-process (see BamsvcConfiguration.BamidTcpPort).
+BamClient bamidClient = new BamClient(new JsonObjectDataEncoder(), BamClient.DefaultHttpBaseAddress, new HostBinding("localhost", config.BamidTcpPort));
+IRegistrationService registrationService = new RegistrationServiceClient(bamidClient, BamClientProtocols.Tcp);
 
 BamServerOptions options = new BamServerOptions();
-options.ServerName = serverName;
-options.HttpHostBinding = new HostBinding(httpPort);
+options.ServerName = config.ServerName;
+options.HttpHostBinding = new HostBinding(config.HttpPort);
+options.SessionDatabase = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"));
 
-// bamid's TCP endpoint. bamid derives this port deterministically from its server name
-// ("bamid") via UseNameBasedPort — observed to be 24515 as long as bamid's server name stays
-// "bamid". Override via --bamid-tcp-port= if bamid is deployed under a different name/port.
-int bamidTcpPort = 24515;
-string? bamidTcpPortArg = args.FirstOrDefault(a => a.StartsWith("--bamid-tcp-port="));
-if (bamidTcpPortArg != null && int.TryParse(bamidTcpPortArg["--bamid-tcp-port=".Length..], out int parsedBamidTcpPort))
+// User account lifecycle services
+options.ComponentRegistry.For<IRegistrationValidator>().Use<DefaultRegistrationValidator>();
+options.ComponentRegistry.For<IRegistrationNotifier>().Use<EmailRegistrationNotifier>();
+options.ComponentRegistry.For<IAccountConfirmation>().Use<DeviceKeyAccountConfirmation>();
+options.ComponentRegistry.For<IRoleGroupMapper>().Use<RoleGroupMapper>();
+options.ComponentRegistry.For<IUserAccountService>().Use<UserAccountService>();
+options.ComponentRegistry.For<IRegistrationService>().UseSingleton(registrationService);
+
+// Application services routed through the pipeline
+options.ComponentRegistry.For<ActorRegistrationService>().Use<ActorRegistrationService>();
+options.ComponentRegistry.For<IdentityGateway>().Use<IdentityGateway>();
+
+// Web service registry — enforces [WebService] attribute on types resolved for remote execution
+WebServiceRegistry webServiceRegistry = new WebServiceRegistry();
+webServiceRegistry.For<ActorRegistrationService>().Use<ActorRegistrationService>();
+webServiceRegistry.For<IdentityGateway>().Use<IdentityGateway>();
+options.ComponentRegistry.Set<WebServiceRegistry>(webServiceRegistry);
+
+WebApplicationBamServer? httpsServer = null;
+WebApplicationBamServer? httpServer = null;
+BamServer? bamServer = null;
+
+// HTTPS requires WebApplicationBamServer (ASP.NET Core Kestrel handles TLS)
+if (config.EnableHttps)
 {
-    bamidTcpPort = parsedBamidTcpPort;
+    BamServerOptions httpsOptions = new BamServerOptions();
+    httpsOptions.ServerName = $"{config.ServerName}-https";
+    httpsOptions.HttpHostBinding = new HostBinding(config.HttpsPort);
+    httpsOptions.SessionDatabase = options.SessionDatabase;
+    httpsOptions.ComponentRegistry.Include(options.ComponentRegistry);
+
+    httpsServer = new WebApplicationBamServer(httpsOptions);
+    httpsServer.AddRouteHandler<ActorRegistrationService>();
+    httpsServer.AddRouteHandler<IdentityGateway>();
+    BamPlatform.Servers.Add(httpsServer);
+
+    httpsServer.Starting += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer (HTTPS) starting on port {config.HttpsPort}...");
+    httpsServer.Started += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer (HTTPS) started: https://localhost:{config.HttpsPort}");
+    httpsServer.RequestExceptionThrown += (_, _) => Console.Error.WriteLine($"[bamsvc] HTTPS request error: {httpsServer.LastExceptionMessage}");
+
+    await httpsServer.StartAsync();
 }
 
-BamClient bamidClient = new BamClient(new JsonObjectDataEncoder(), BamClient.DefaultHttpBaseAddress, new HostBinding("localhost", bamidTcpPort));
-IRegistrationService registrationService = new RegistrationServiceClient(bamidClient, BamClientProtocols.Tcp);
-IdentityGatewayRoutes identityGatewayRoutes = new IdentityGatewayRoutes(registrationService);
-
-WebApplicationBamServer webServer = new WebApplicationBamServer(options);
-BamPlatform.Servers.Add(webServer);
-
-webServer.Starting += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer starting on port {httpPort}...");
-webServer.Started += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer started: http://localhost:{httpPort}");
-webServer.RequestExceptionThrown += (_, _) => Console.Error.WriteLine($"[bamsvc] Request error: {webServer.LastExceptionMessage}");
-
-webServer.ConfigureRoutes = (WebApplication app) =>
+// HTTP (non-TLS) — also uses WebApplicationBamServer for the HTTP endpoint
+if (config.EnableHttp)
 {
-    identityGatewayRoutes.MapRoutes(app);
-};
+    httpServer = new WebApplicationBamServer(options);
+    httpServer.AddRouteHandler<ActorRegistrationService>();
+    httpServer.AddRouteHandler<IdentityGateway>();
+    BamPlatform.Servers.Add(httpServer);
 
-await webServer.StartAsync();
+    httpServer.Starting += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer (HTTP) starting on port {config.HttpPort}...");
+    httpServer.Started += (_, _) => Console.WriteLine($"[bamsvc] WebApplicationBamServer (HTTP) started: http://localhost:{config.HttpPort}");
+    httpServer.RequestExceptionThrown += (_, _) => Console.Error.WriteLine($"[bamsvc] HTTP request error: {httpServer.LastExceptionMessage}");
 
-// Optionally start BamServer for TCP/UDP
-BamServer? bamServer = null;
-if (enableTcpUdp)
+    await httpServer.StartAsync();
+}
+
+// TCP and/or UDP — uses BamServer (raw socket listeners)
+if (config.EnableTcp || config.EnableUdp)
 {
-    bamServer = new BamServerBuilder()
-        .ServerName(serverName)
-        .UseNameBasedPort()
-        .OnStarted((_, _) => Console.WriteLine($"[bamsvc] BamServer started: TCP={bamServer!.TcpPort}, UDP={bamServer.UdpPort}"))
-        .Build();
+    BamServerOptions tcpUdpOptions = new BamServerOptions();
+    tcpUdpOptions.ServerName = $"{config.ServerName}-tcpudp";
+    tcpUdpOptions.EnableHttpListener = false;
+    tcpUdpOptions.TcpPort = config.TcpPort;
+    tcpUdpOptions.UdpPort = config.UdpPort;
+    tcpUdpOptions.SessionDatabase = options.SessionDatabase;
+    tcpUdpOptions.ComponentRegistry.Include(options.ComponentRegistry);
+
+    bamServer = new BamServer(tcpUdpOptions);
+    BamPlatform.Servers.Add(bamServer);
     await bamServer.StartAsync();
+
+    if (config.EnableTcp)
+    {
+        Console.WriteLine($"[bamsvc] BamServer TCP listening on port {config.TcpPort}");
+    }
+    if (config.EnableUdp)
+    {
+        Console.WriteLine($"[bamsvc] BamServer UDP listening on port {config.UdpPort}");
+    }
 }
 
 Console.WriteLine("[bamsvc] Press Ctrl+C to stop.");
 
-// Wait for shutdown signal
 CancellationTokenSource cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
