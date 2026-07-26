@@ -24,7 +24,7 @@ options.SessionDatabase = new SQLiteDatabase(new FileInfo("./.bam/bamsvc.sqlite"
 // User account lifecycle services
 options.ComponentRegistry.For<IRegistrationValidator>().Use<DefaultRegistrationValidator>();
 options.ComponentRegistry.For<IRegistrationNotifier>().Use<EmailRegistrationNotifier>();
-options.ComponentRegistry.For<IAccountConfirmation>().Use<DeviceKeyAccountConfirmation>();
+options.ComponentRegistry.AddBamsvcAccountConfirmation(config.ServerName);
 options.ComponentRegistry.For<IRoleGroupMapper>().Use<RoleGroupMapper>();
 options.ComponentRegistry.For<IUserAccountService>().Use<UserAccountService>();
 options.ComponentRegistry.For<IRegistrationService>().UseSingleton(registrationService);
