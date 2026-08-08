@@ -18,9 +18,11 @@ public static class BamsvcServiceRegistration
     /// <summary>
     /// Registers the device-key account-confirmation flow and its host prerequisites on the
     /// server's component registry:
-    /// a durable <see cref="IRepository"/> (the <see cref="ObjectDataRepository"/> whose object-data
-    /// stack <c>BamServerOptions.Initialize</c> already registered via
-    /// <c>AddEncryptedProfileRepository</c>), an <see cref="Bam.Protocol.ICertificateManager"/>
+    /// a durable <see cref="IRepository"/> (an <see cref="ObjectDataRepository"/> constructed
+    /// eagerly as a singleton from the same encrypted object-data stack
+    /// <c>AddEncryptedProfileRepository</c> registered — same root storage and key material, same
+    /// store; that extension binds the repository transiently, so this is a distinct instance over
+    /// the same store), an <see cref="Bam.Protocol.ICertificateManager"/>
     /// issuing on behalf of this server's actor identity (<see cref="ActorData"/> named
     /// <paramref name="serverName"/>), and the <see cref="Bam.UserAccounts.IAccountConfirmation"/>
     /// binding itself.
@@ -29,6 +31,12 @@ public static class BamsvcServiceRegistration
     /// (<c>IProfileRepository</c>, <c>IKeyManager</c>, <c>ICompositeKeyCalculator</c>, and the
     /// object-data stack) — call this on a <c>BamServerOptions.ComponentRegistry</c>, not on an
     /// empty registry.
+    /// </para>
+    /// <para>
+    /// Binding note: via <c>AddCertificateManager</c>, this call <b>replaces any process-wide
+    /// <see cref="Bam.Protocol.IActor"/> binding</b> with the server's issuer identity. Request-time
+    /// caller identity is unaffected — it resolves per request through <c>IActorResolver</c>, never
+    /// from the registry's <see cref="Bam.Protocol.IActor"/> binding.
     /// </para>
     /// <para>
     /// Known limitation: the encrypted profile store is keyed per process start, so challenge
